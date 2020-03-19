@@ -1,0 +1,94 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - master
+env:
+  IMAGE_NAME: my-app
+  IMAGE_TAG: latest
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Get Cloud Native Build
+        run: wget https://github.com/buildpacks/pack/releases/download/v0.9.0/pack-v0.9.0-linux.tgz
+
+      - name: Unzip file
+        run: tar xvf pack-v0.9.0-linux.tgz
+
+      - name: Remove pack
+        run: rm pack-v0.9.0-linux.tgz
+
+      - name: Build :latest
+        if: success()
+        run: ./pack build --path . minimum-rack-cnb --builder heroku/buildpacks:18
+
+      - name: Build :tag
+        if: success()
+        run: docker tag minimum-rack-cnb docker.pkg.github.com/${{ github.repository }}/${IMAGE_NAME}:${IMAGE_TAG}
+
+      - name: Login GitHub Registry
+        if: success()
+        run: docker login docker.pkg.github.com -u owner -p ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push it to GitHub Package Registry
+        if: success()
+        run: |
+          docker push docker.pkg.github.com/${{ github.repository }}/${IMAGE_NAME}:${IMAGE_TAG}
+
+  dockle:
+    name: Dockle
+    runs-on: ubuntu-18.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Login GitHub Registry
+        run: docker login docker.pkg.github.com -u owner -p ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image from GitHub Registry
+        run: docker pull docker.pkg.github.com/${{ github.repository }}/${IMAGE_NAME}:${IMAGE_TAG}
+
+      - name: Install dockle
+        run: |
+          VERSION=$(curl --silent "https://api.github.com/repos/goodwithtech/dockle/releases/latest" | \
+          grep '"tag_name":' | \
+          sed -E 's/.*"v([^"]+)".*/\1/' \
+          )
+          curl -L -o dockle.deb https://github.com/goodwithtech/dockle/releases/download/v${VERSION}/dockle_${VERSION}_Linux-64bit.deb
+          sudo dpkg -i dockle.deb
+          rm dockle.deb
+
+      - name: Check image with dockle
+        run: dockle docker.pkg.github.com/${{ github.repository }}/${IMAGE_NAME}:${IMAGE_TAG}
+
+  trivy:
+    name: Trivy Scan Vulnerability
+    runs-on: ubuntu-18.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Login GitHub Registry
+        run: docker login docker.pkg.github.com -u owner -p ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image from GitHub Registry
+        run: docker pull docker.pkg.github.com/${{ github.repository }}/${IMAGE_NAME}:${IMAGE_TAG}
+
+      - name: Install trivy
+        run: |
+          sudo apt-get install --no-install-recommends apt-transport-https gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -cs) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends trivy
+
+      - name: Vulnerability Scan with Trivy
+        run: |
+          trivy -q --severity CRITICAL \
+            --exit-code 1 docker.pkg.github.com/${{ github.repository }}/${IMAGE_NAME}:${IMAGE_TAG}
