@@ -92,3 +92,40 @@ jobs:
         run: |
           trivy -q --severity CRITICAL \
             --exit-code 1 docker.pkg.github.com/${{ github.repository }}/${IMAGE_NAME}:${IMAGE_TAG}
+
+  push:
+    name: Push
+    runs-on: ubuntu-18.04
+    needs: [dockle, trivy]
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Get Cloud Native Build
+        run: wget https://github.com/buildpacks/pack/releases/download/v0.9.0/pack-v0.9.0-linux.tgz
+
+      - name: Unzip file
+        run: tar xvf pack-v0.9.0-linux.tgz
+
+      - name: Remove pack
+        run: rm pack-v0.9.0-linux.tgz
+
+      - name: Build :latest
+        if: success()
+        run: ./pack build --path . minimum-rack-cnb --builder heroku/buildpacks:18
+
+      - name: Build :tag
+        if: success()
+        run: docker tag minimum-rack-cnb ${GITHUB_REPOSITORY}:latest
+
+      - name: Login to docker hub
+        if: success()
+        uses: actions-hub/docker/login@master
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push to docker registry
+        if: success()
+        uses: actions-hub/docker@master
+        with:
+          args: push ${GITHUB_REPOSITORY}:latest
