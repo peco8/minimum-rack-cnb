@@ -1,12 +1,11 @@
-name: Build
+name: Release
 
 on:
   push:
-    branches:
-      - '*'
-
+    tags:
+      - v*
 env:
-  IMAGE_NAME: sample
+  IMAGE_NAME: sample_release
   IMAGE_TAG: latest
 
 jobs:
@@ -91,3 +90,46 @@ jobs:
         run: |
           trivy -q --severity CRITICAL \
             --exit-code 1 docker.pkg.github.com/${{ github.repository }}/${IMAGE_NAME}:${IMAGE_TAG}
+
+  push:
+    name: Push
+    runs-on: ubuntu-18.04
+    needs: [dockle, trivy]
+    steps:
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Login GitHub Registry
+        if: success()
+        run: docker login docker.pkg.github.com -u owner -p ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image from GitHub Registry
+        if: success()
+        run: docker pull docker.pkg.github.com/${{ github.repository }}/${IMAGE_NAME}:${IMAGE_TAG}
+
+      - name: Build :tag
+        if: success()
+        env:
+          SHA: ${{ github.sha }}
+        run: docker tag docker.pkg.github.com/${{ github.repository }}/${IMAGE_NAME} ${GITHUB_REPOSITORY}:$SHA
+
+      - name: Login to docker hub
+        if: success()
+        uses: actions-hub/docker/login@master
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push to docker registry
+        if: success()
+        uses: actions-hub/docker@master
+        with:
+          args: push ${GITHUB_REPOSITORY}

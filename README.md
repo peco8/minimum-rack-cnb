@@ -14,14 +14,14 @@ This buildpack is currently intended to be used with the heroku builder [heroku/
 ```sh
 git clone git@github.com:peco8/minimum-rack-cnb.git
 cd minimum-rack-cnb
-pack build my-app \
+pack build sample \
      --builder heroku/buildpacks:18
      --path .
 ```
 
 ##### Quick test
 ```sh
-docker run --rm -e PORT=8080 -p 8080:8080 my-app
+docker run --rm -e PORT=8080 -p 8080:8080 sample
 curl -s http://0.0.0.0:8080
 ```
 
