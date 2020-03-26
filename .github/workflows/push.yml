@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - v*
+      - 'v*'
 env:
   IMAGE_NAME: sample_release
   IMAGE_TAG: latest
