@@ -2,8 +2,8 @@ name: Build
 
 on:
   push:
-    branches:
-      - '*'
+    branches-ignore:
+      - 'master'
 
 env:
   IMAGE_NAME: sample
